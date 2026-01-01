@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { Camera, Hand, Heart, Flower2, Star, Sparkles, HelpCircle, X } from 'lucide-react';
+import { Camera, Heart, Flower2, Star, Sparkles, HelpCircle, X } from 'lucide-react';
 
 // TypeScript declarations for MediaPipe
 interface MediaPipeHands {
@@ -46,12 +46,14 @@ interface AudioNodes {
 export default function HandControl3D() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const handCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isStarted, setIsStarted] = useState(false);
   const [currentShape, setCurrentShape] = useState<ShapeType>('sphere');
   const [detectedGesture, setDetectedGesture] = useState<string>('WAITING FOR INPUT');
   const [cameraActive, setCameraActive] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [handDetected, setHandDetected] = useState(false);
+  const [showCameraFeed, setShowCameraFeed] = useState(true);
   
   // Refs for Three.js and MediaPipe
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -418,17 +420,25 @@ export default function HandControl3D() {
   const initMediaPipe = async () => {
     if (!videoRef.current || typeof window === 'undefined' || !window.Hands) {
       console.log('MediaPipe not available, using mouse/touch mode');
+      setDetectedGesture('MEDIAPIPE NOT LOADED - Using Mouse/Touch');
       return;
     }
     
     try {
+      setDetectedGesture('REQUESTING CAMERA ACCESS...');
+      
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 },
+        video: { 
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          facingMode: 'user'
+        },
       });
       
       videoRef.current.srcObject = stream;
-      videoRef.current.play();
+      await videoRef.current.play();
       setCameraActive(true);
+      setDetectedGesture('INITIALIZING HAND TRACKING...');
       
       const hands = new window.Hands({
         locateFile: (file: string) => {
@@ -446,6 +456,8 @@ export default function HandControl3D() {
       hands.onResults(onHandResults);
       handsRef.current = hands;
       
+      setDetectedGesture('CAMERA ACTIVE - Show your hand');
+      
       const processFrame = async () => {
         if (videoRef.current && handsRef.current) {
           await handsRef.current.send({ image: videoRef.current });
@@ -457,7 +469,69 @@ export default function HandControl3D() {
     } catch (error) {
       console.error('Camera error:', error);
       setCameraActive(false);
+      
+      if ((error as Error).name === 'NotAllowedError') {
+        setDetectedGesture('CAMERA ACCESS DENIED - Using Mouse/Touch');
+      } else if ((error as Error).name === 'NotFoundError') {
+        setDetectedGesture('NO CAMERA FOUND - Using Mouse/Touch');
+      } else {
+        setDetectedGesture('CAMERA ERROR - Using Mouse/Touch');
+      }
     }
+  };
+
+  // Draw hand landmarks on canvas
+  const drawHandLandmarks = (landmarks: MediaPipeLandmark[]) => {
+    if (!handCanvasRef.current) return;
+    
+    const canvas = handCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw connections between landmarks
+    const connections = [
+      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+      [0, 5], [5, 6], [6, 7], [7, 8], // Index
+      [0, 9], [9, 10], [10, 11], [11, 12], // Middle
+      [0, 13], [13, 14], [14, 15], [15, 16], // Ring
+      [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+      [5, 9], [9, 13], [13, 17], // Palm
+    ];
+    
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    
+    connections.forEach(([start, end]) => {
+      const startPoint = landmarks[start];
+      const endPoint = landmarks[end];
+      
+      ctx.beginPath();
+      ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height);
+      ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height);
+      ctx.stroke();
+    });
+    
+    // Draw landmark points
+    ctx.fillStyle = '#ff0000';
+    landmarks.forEach((landmark, index) => {
+      const x = landmark.x * canvas.width;
+      const y = landmark.y * canvas.height;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, index === 8 || index === 4 ? 6 : 4, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Highlight thumb and index finger tips
+      if (index === 8 || index === 4) {
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x, y, 10, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    });
   };
 
   // Process hand tracking results
@@ -465,12 +539,24 @@ export default function HandControl3D() {
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
       setHandDetected(false);
       setDetectedGesture('WAITING FOR INPUT');
+      
+      // Clear canvas
+      if (handCanvasRef.current) {
+        const ctx = handCanvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, handCanvasRef.current.width, handCanvasRef.current.height);
+        }
+      }
+      
       return;
     }
     
     setHandDetected(true);
     
     const landmarks = results.multiHandLandmarks[0];
+    
+    // Draw hand landmarks
+    drawHandLandmarks(landmarks);
     
     // Get index finger tip position (landmark 8)
     const indexTip = landmarks[8];
@@ -589,6 +675,36 @@ export default function HandControl3D() {
     }
   };
 
+  // Toggle camera tracking
+  const toggleCamera = async () => {
+    if (cameraActive) {
+      // Stop camera
+      if (videoRef.current?.srcObject) {
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
+      
+      // Clear hands ref to stop processing
+      handsRef.current = null;
+      
+      setCameraActive(false);
+      setHandDetected(false);
+      setDetectedGesture('CAMERA DISABLED - Using Mouse/Touch');
+      
+      // Clear hand canvas
+      if (handCanvasRef.current) {
+        const ctx = handCanvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.clearRect(0, 0, handCanvasRef.current.width, handCanvasRef.current.height);
+        }
+      }
+    } else {
+      // Start camera
+      await initMediaPipe();
+    }
+  };
+
   // Start experience
   const handleStart = () => {
     setIsStarted(true);
@@ -680,32 +796,75 @@ export default function HandControl3D() {
           </div>
           
           {/* Camera Feed */}
-          {cameraActive && (
+          {cameraActive && showCameraFeed && (
             <div className="absolute bottom-8 right-8 z-10">
-              <div className="relative w-48 h-36 rounded-lg overflow-hidden border-2 border-white/30">
+              <div className="relative w-80 h-60 rounded-lg overflow-hidden border-2 border-white/30 bg-black">
                 <video
                   ref={videoRef}
-                  className={`w-full h-full object-cover transform scale-x-[-1] ${
-                    handDetected ? 'blur-sm' : ''
-                  }`}
+                  className="w-full h-full object-cover transform scale-x-[-1]"
                   playsInline
                 />
-                {handDetected && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Hand className="w-12 h-12 text-green-500" />
-                  </div>
-                )}
+                <canvas
+                  ref={handCanvasRef}
+                  width={320}
+                  height={240}
+                  className="absolute inset-0 w-full h-full transform scale-x-[-1]"
+                />
+                
+                {/* Status indicator */}
+                <div className="absolute top-2 left-2 flex items-center gap-2 bg-black/70 px-3 py-1 rounded-full">
+                  <div className={`w-2 h-2 rounded-full ${handDetected ? 'bg-green-500' : 'bg-red-500'} animate-pulse`} />
+                  <span className="text-white text-xs font-mono">
+                    {handDetected ? 'TRACKING' : 'SEARCHING'}
+                  </span>
+                </div>
+                
+                {/* Toggle visibility button */}
+                <button
+                  onClick={() => setShowCameraFeed(false)}
+                  className="absolute top-2 right-2 bg-black/70 p-2 rounded-full hover:bg-black/90 transition-colors"
+                  title="Hide Camera Feed"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
               </div>
             </div>
           )}
           
-          {/* Help Button */}
-          <button
-            onClick={() => setShowHelp(!showHelp)}
-            className="absolute top-8 right-8 z-10 bg-white/10 backdrop-blur-sm p-3 rounded-full hover:bg-white/20 transition-colors"
-          >
-            <HelpCircle className="w-6 h-6 text-white" />
-          </button>
+          {/* Show camera feed button when hidden */}
+          {cameraActive && !showCameraFeed && (
+            <button
+              onClick={() => setShowCameraFeed(true)}
+              className="absolute bottom-8 right-8 z-10 bg-white/10 backdrop-blur-sm p-4 rounded-full hover:bg-white/20 transition-colors"
+              title="Show Camera Feed"
+            >
+              <Camera className="w-6 h-6 text-white" />
+            </button>
+          )}
+          
+          {/* Top Right Controls */}
+          <div className="absolute top-8 right-8 z-10 flex gap-3">
+            {/* Camera Toggle Button */}
+            <button
+              onClick={toggleCamera}
+              className={`p-3 rounded-full backdrop-blur-sm transition-colors ${
+                cameraActive 
+                  ? 'bg-green-500/30 hover:bg-green-500/40 border-2 border-green-500' 
+                  : 'bg-white/10 hover:bg-white/20'
+              }`}
+              title={cameraActive ? 'Disable Camera Tracking' : 'Enable Camera Tracking'}
+            >
+              <Camera className={`w-6 h-6 ${cameraActive ? 'text-green-400' : 'text-white'}`} />
+            </button>
+            
+            {/* Help Button */}
+            <button
+              onClick={() => setShowHelp(!showHelp)}
+              className="bg-white/10 backdrop-blur-sm p-3 rounded-full hover:bg-white/20 transition-colors"
+            >
+              <HelpCircle className="w-6 h-6 text-white" />
+            </button>
+          </div>
           
           {/* Manual Controls */}
           <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-10">
@@ -818,9 +977,13 @@ export default function HandControl3D() {
                   </div>
                   
                   <div className="mt-6 p-4 bg-blue-500/20 border border-blue-500/50 rounded-lg">
-                    <p className="text-sm text-blue-200">
-                      💡 <strong>Tip:</strong> If camera is unavailable, use your mouse or touch to interact. 
+                    <p className="text-sm text-blue-200 mb-3">
+                      💡 <strong>Tip:</strong> Use your mouse or touch to interact when camera is disabled. 
                       Click and drag to attract particles!
+                    </p>
+                    <p className="text-sm text-blue-200">
+                      📹 <strong>Camera Controls:</strong> Use the camera button (top-right) to toggle hand tracking on/off. 
+                      Hand landmarks will be displayed in green on the camera feed.
                     </p>
                   </div>
                 </div>

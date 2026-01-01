@@ -23,8 +23,9 @@ MUNA Hand Control is a real-time, cinematic 3D particle system that combines com
   - Dynamic HSL color shifting based on position and time
   - Continuous global rotation
 
-### 👋 Hand Tracking & Gesture Recognition
-- **MediaPipe Hands** for real-time computer vision
+### 👋 Live Camera Hand Tracking & Gesture Recognition
+- **MediaPipe Hands** for real-time computer vision with 21-point hand landmark detection
+- **Live Camera Feed**: Visual overlay showing tracked hand landmarks in real-time
 - **Gesture Controls**:
   - ✌️ 2 Fingers Up → Flower shape
   - 🤟 3 Fingers Up → Saturn shape
@@ -32,8 +33,9 @@ MUNA Hand Control is a real-time, cinematic 3D particle system that combines com
   - ✋ 5 Fingers (Open Hand) → Fireworks shape
   - 🤏 Pinch (Thumb + Index) → Attract particles
 - **Smart Detection**: 15-frame confidence threshold prevents jitter
-- **3D Position Tracking**: Index finger tip controls interaction point
-- **Mouse/Touch Fallback**: Automatic fallback when camera unavailable
+- **3D Position Tracking**: Index finger tip controls interaction point in 3D space
+- **Camera Controls**: Toggle camera on/off, show/hide feed, visual tracking indicators
+- **Mouse/Touch Fallback**: Automatic fallback when camera unavailable or disabled
 
 ### 🔊 Generative Audio (Web Audio API)
 - **Ambient Drone**: Continuous 55Hz sine wave oscillator
@@ -45,10 +47,15 @@ MUNA Hand Control is a real-time, cinematic 3D particle system that combines com
 
 ### 🎮 User Interface
 - **Start Screen**: Permission-aware overlay for AudioContext and camera
-- **Gesture HUD**: Real-time feedback of detected gestures
-- **Camera Preview**: Live feed with blur effect when hand detected
+- **Gesture HUD**: Real-time feedback of detected gestures and tracking status
+- **Live Camera Feed**: Resizable video preview with hand landmark overlay (320x240)
+  - Visual hand skeleton with green lines connecting 21 landmarks
+  - Red dots for all hand points, yellow highlights for thumb/index tips
+  - Real-time tracking status indicator (TRACKING/SEARCHING)
+  - Toggle visibility controls
+- **Camera Controls**: Top-right camera button to enable/disable tracking
 - **Manual Controls**: Button panel for direct shape selection
-- **Help Modal**: Interactive gesture guide with emojis
+- **Help Modal**: Interactive gesture guide with camera usage instructions
 - **Responsive Design**: Adapts to window resize
 
 ## Technology Stack
@@ -103,14 +110,28 @@ All camera data is processed **locally on the client device**. No video streams 
 ## Controls
 
 ### Camera Mode (Primary)
-- Use hand gestures to control particle shapes
-- Move your hand to interact with particles
-- Pinch thumb and index finger together to attract particles
+- **Enable/Disable**: Click camera button (top-right) to toggle tracking
+- **Grant Permission**: Allow camera access when prompted by browser
+- **Hand Gestures**: Use gestures to control particle shapes (see above)
+- **Hand Movement**: Move your hand to interact with particles in 3D space
+- **Pinch**: Bring thumb and index finger together to attract particles
+- **Visual Feedback**: Watch hand landmarks overlay on camera feed
+- **Hide/Show Feed**: Use X button or camera icon to toggle feed visibility
 
 ### Mouse/Touch Mode (Fallback)
-- Move cursor/finger to interact with particles
-- Click/hold to attract particles (simulates pinch)
-- Hover for gentle swirl effect
+- **Automatic**: Activates when camera is disabled or unavailable
+- **Move**: Cursor/finger position controls interaction point
+- **Click/Hold**: Attract particles (simulates pinch gesture)
+- **Hover**: Creates gentle swirl effect around cursor
+
+### Camera Tracking Features
+- **Real-time Hand Detection**: 21-point landmark tracking at high FPS
+- **Visual Skeleton**: Green lines showing hand structure
+- **Status Indicators**: Live tracking status display
+- **Landmark Highlights**: Yellow circles on thumb and index finger tips
+- **Gesture Smoothing**: 15-frame threshold for stable detection
+
+For detailed camera tracking information, see [CAMERA_TRACKING_GUIDE.md](CAMERA_TRACKING_GUIDE.md)
 
 ## License
 
